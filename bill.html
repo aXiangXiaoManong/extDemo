@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title></title>
+<link rel="stylesheet" type="text/css" href="extjs/resources/css/ext-all.css"/>
+<script type="text/javascript" src="extjs/ext-all.js"></script>
+<script type="text/javascript" src="extjs/ext-lang-zh_CN.js"></script>
+<script type="text/javascript" src="js/toast.js"></script>
+</head>
+<body>
+</body>
+</html>
+<script type="text/javascript">
+	function getDate(str){
+		var d ;
+		if(str != null)
+			d = new Date(str);
+		else
+			d = new Date();
+		return d.getFullYear() + "-" + (d.getMonth()<10 ? "0"+(d.getMonth()+1) : d.getMonth()+1) + "-" + (d.getDate()<10 ? "0"+d.getDate() : d.getDate());
+	}
+	//今天的时间
+	var currDate = getDate(null);
+	
+	var option = true;//修改：新增
+	Ext.onReady(function(){
+		Ext.QuickTips.init();//快速提示
+		var windowst=new Ext.Window({
+			width:640,
+			height:570,
+			title:"销售出库单",
+			closable:true,
+			resizable:false, //设置是否可以改变大小
+			draggable:true,
+			anchor: '100%',
+		    tbar: [
+				{ xtype: 'button', text: '上一页',id: 'prevPage', handler: function(){
+					page--;
+					billGet();
+				}},
+				{ xtype: 'button', text: '下一页',id: 'nextPage', handler: function(){
+					page++;
+					billGet();
+				}},
+				{ xtype: 'button', text: '新增',id: 'insert',handler : function() {
+					formheader.items.each(function(f){ 
+						if(f.id != "billno")
+							f.setReadOnly(false);
+					});
+					formfotter.items.each(function(f){ f.setReadOnly(false);});//设置为可读
+					formheader.getForm().reset();//清空表单
+					formfotter.getForm().reset();
+					gridPanel.store.loadData([],false);//清空gridpanel
+					
+					Ext.Ajax.request({
+					    url: 'http://127.0.0.1:85/bill/getBillno/'+currDate,
+					    params: {},
+					    success: function(response){
+					        var data = response.responseText;
+					        Ext.getCmp("billno").setValue(data);
+					    }
+					});
+					
+		       		Ext.getCmp("nextPage").disable();
+		       		Ext.getCmp("prevPage").disable();
+		       		Ext.getCmp("insert").disable();
+		       		Ext.getCmp("update").disable();
+		       		Ext.getCmp("remove").disable();
+		       		Ext.getCmp("refresh").disable();
+		       		Ext.getCmp("cancel").enable();
+		       		Ext.getCmp("save").enable();
+		       		option = false,tiger = true;
+				}},
+				{ xtype: 'button', text: '保存', id: 'save', disabled : true, handler: function(){
+					var bill = {
+						billno: Ext.getCmp('billno').getValue(),
+						billdate: getDate(Ext.getCmp('billdate').getValue()),
+						supplier: Ext.getCmp('supplier').getValue(),
+						supplierAddress: Ext.getCmp('supplierAddress').getValue(),
+						purchasPerson: Ext.getCmp('purchasPerson').getValue(),
+						subDept: Ext.getCmp('subDept').getValue(),
+						details: []
+					}
+					gridPanel.getStore().each(function(rec){
+						rec.data.billno = bill.billno;
+						bill.details.push(rec.data);
+					});
+					if(!checkInput(bill)){
+						return;
+					}
+					
+					formheader.items.each(function(f){ f.setReadOnly(true);});//设置为只读
+					formfotter.items.each(function(f){ f.setReadOnly(true);});
+					
+		       		Ext.getCmp("save").disable();
+		       		Ext.getCmp("cancel").disable();
+		       		Ext.getCmp("update").enable();
+		       		Ext.getCmp("remove").enable();
+		       		Ext.getCmp("insert").enable();
+		       		Ext.getCmp("refresh").enable();
+		       		tiger = false;
+					
+					//保存时 是 新增还是修改
+					var url = option ? 'http://127.0.0.1:85/bill/update' : 'http://127.0.0.1:85/bill/save';
+					Ext.Ajax.request({
+					    url: url,
+					    params: JSON.stringify(bill),
+					    method: 'post',
+					    headers: {'Content-Type':'application/json'},
+					    success: function(response){
+					        var data = JSON.parse(response.responseText);
+					        alert(JSON.stringify(data));
+					        if(data.status == 200){
+					        	if(!option){
+					        		page++;
+					        		billGet();
+					        	}
+					        }
+					    }
+					});
+				}},
+				{ xtype: 'button', text: '修改', id: 'update', handler:function(){
+		       		Ext.getCmp("nextPage").disable();
+		       		Ext.getCmp("prevPage").disable();
+       				Ext.getCmp("save").enable();
+       				Ext.getCmp("cancel").enable();
+		       		Ext.getCmp("insert").disable();
+		       		Ext.getCmp("update").disable();
+		       		Ext.getCmp("remove").disable();
+		       		Ext.getCmp("refresh").disable();
+		       		option = true,tiger = true;
+		       		formheader.items.each(function(f){ 
+						if(f.id != "billno")
+							f.setReadOnly(false);
+					});
+					formfotter.items.each(function(f){ f.setReadOnly(false);});//设置为可读
+				}},
+				{ xtype: 'button', text: '放弃', id: 'cancel', disabled : true, handler: function(){
+					Ext.Msg.confirm('温馨提示', '你确定要放弃吗', function(e){
+						if(e == 'yes'){
+							page = maxPage;
+							billGet();
+		       				Ext.getCmp("cancel").disable();
+		       				Ext.getCmp("save").disable();
+				       		Ext.getCmp("insert").enable();
+				       		Ext.getCmp("update").enable();
+				       		Ext.getCmp("remove").enable();
+				       		Ext.getCmp("refresh").enable();
+				       		tiger = false;
+				       		console.info(gridPanel.store)
+						}
+					});
+					
+				}},
+				{ xtype: 'button', text: '删除', id:'remove', handler:function(){
+					Ext.Msg.confirm('温馨提示', '你确定要删除吗', function(e){
+						if(e == 'yes'){
+							Ext.Ajax.request({
+							    url: 'http://127.0.0.1:85/bill/remove/'+Ext.getCmp("billno").getValue(),
+							    method: 'delete',
+							    success: function(response){
+							        var data = JSON.parse(response.responseText);
+							        alert(JSON.stringify(data));
+							        if(data.status == 200){
+										page = --maxPage;
+										billGet();
+							        }
+							    }
+							});
+						}
+					});
+				}},
+				{ xtype: 'button', text: '刷新', id: 'refresh',handler:function(){
+					billGet();
+				}}
+			],
+			items:[formheader,gridPanel,formfotter]
+		}).show();
+		
+		Ext.Ajax.timeout = 10000; // 10秒
+		
+		billGet();
+	});
+	
+	//非空验证
+	function checkInput(bill){
+		if(bill.details.length == 0){
+			alert('请添加采购的物料信息');
+			return false;
+		}else{
+			for(var i = 0; i < bill.details.length; i++){
+				if(bill.details[i].amount<=0){
+					alert('数量不能为零');
+					return false;
+				}
+			}
+		}
+		if(bill.billdate.length == 0){
+			alert('日期不能为空');
+			return false;
+		}else if(bill.supplier.length == 0){
+			alert('供应商不能为空');
+			return false;
+		}else if(bill.purchasPerson.length == 0){
+			alert('采购人员不能为空');
+			return false;
+		}else if(bill.subDept.length == 0){
+			alert('日期不能为空');
+			return false;
+		}
+		return true;
+	}
+	
+	var page = -1;//当前页
+	var maxPage = 0;//最后一页
+	function billGet(){//分页查询
+		Ext.Ajax.request({
+		    url: 'http://127.0.0.1:85/bill/get/'+page,
+		    params: {},
+		    success: function(response){
+		        var data = response.responseText;
+		        var jsonObj = JSON.parse(data);
+		        var obj = jsonObj.bill;
+		       	Ext.getCmp("billno").setValue(obj.billno);
+		       	Ext.getCmp("billdate").setValue(new Date(obj.billdate));
+		       	Ext.getCmp("supplier").setValue(obj.supplier);
+		       	Ext.getCmp("supplierAddress").setValue(obj.supplierAddress);
+		       	Ext.getCmp("purchasPerson").setValue(obj.purchasPerson);
+		       	Ext.getCmp("subDept").setValue(obj.subDept);
+		       	
+		       	gridPanel.store.loadData(obj.details,false);
+		       	
+		       	maxPage = jsonObj.maxPage;
+		       	if(page == -1)
+		       		page = maxPage;
+		       		
+		       	if(page >= maxPage){
+		       		page = maxPage;
+		       		Ext.getCmp("nextPage").disable(); //enable
+		       		Ext.getCmp("prevPage").enable();
+		       	}else if(page <= 1){
+		       		page = 1;
+		       		Ext.getCmp("prevPage").disable();
+		       		Ext.getCmp("nextPage").enable();
+		       	}else if(maxPage == 1){
+		       		Ext.getCmp("prevPage").disable();
+		       		Ext.getCmp("nextPage").disable();
+		       	}else{
+		       		Ext.getCmp("prevPage").enable();
+		       		Ext.getCmp("nextPage").enable();
+		       	}
+		    }
+		});
+	}
+	var materielPanel,
+		MaterielWindow;
+	var materielStore=Ext.create('Ext.data.Store',{
+       	fields:['materielId','materielName','unitPrice'],
+    	data: []
+   });
+	function openMaterielWindow(){
+		materielPanel = Ext.create('Ext.grid.Panel', {
+			store: materielStore,
+			forceFit: true, //列表宽度自适应 
+		    multiSelect: true,
+		    //selModel: new Ext.selection.CheckboxModel(),//复选框
+		    columns: [
+		    	{ header: '栏号',xtype: 'rownumberer',dataIndex: 'rownumber', width: 55,sortable: false},
+		        { header: '物料编号', dataIndex: 'materielId', editor: { xtype:'textfield'}},
+		        { header: '物料名称', dataIndex: 'materielName', editor: { xtype:'textfield'} },
+		        { header: '单价', dataIndex: 'unitPrice', editor: { xtype:'textfield'}},
+		    ],
+		    width: '100%',
+		    height: '100%',
+		});
+		MaterielWindow = new Ext.Window({//物料窗体
+			width:340,
+			height:270,
+			title:"物料维护",
+			closable:true,
+			resizable:false, //设置是否可以改变大小
+			draggable:true,
+			anchor: '100%',
+			tbar:[
+				{ xtype: 'button', text: '取回' , handler: function(){
+					var records=materielPanel.getSelectionModel().getSelection();
+					
+					gridPanel.store.loadData([],false);
+					records.forEach(function(rec,i){
+						var obj = rec.data;
+						gridPanel.store.add({'rownumber':(i+1), 'materielName':obj.materielName,'amount':0,'unitPrice':obj.unitPrice,'amountOfmoney':0});
+					});
+					MaterielWindow.close();
+				}},
+			],
+			items:[
+				materielPanel
+			]
+		}).show();
+	}
+	
+	//formheader，gridPanel，formfotter都存在 windowst
+	var formDefaults = {
+		bodyPadding: 5,
+		margin: '8 15',
+		labelWidth: 80,
+		anchor: '100%',
+		width: 270,
+		readOnly: true
+	};
+	var formheader = Ext.create('Ext.form.Panel', {
+		store:Ext.data.StoreManager.lookup('billGetStore'),
+		bodyPadding: '5',
+		layout: {
+		    type: 'column',
+		    align: 'left'
+		},
+		baseCls: 'x-plain',
+		defaultType: 'textfield',
+		defaults: formDefaults,
+		items: [
+			{
+				id: 'billno',
+				name: 'billno',
+				fieldLabel: '订单单号',
+			},{
+				id: 'billdate',
+				name: 'billdate',
+				fieldLabel: '订单时间',
+				value: new Date(),
+				xtype: 'datefield',
+				format: 'Y-m-d'
+			},{
+				id: 'supplier',
+				name: 'supplier',
+				fieldLabel: '供应商',
+			},{
+				id: 'supplierAddress',
+				name: 'supplierAddress',
+				fieldLabel: '供应商地址',
+			}
+		]
+	});
+	
+	var billGetStoreDetail=Ext.create('Ext.data.Store',{
+       fields:['rownumber','materielName','amount','unitPrice','amountOfmoney'],
+       data:[]
+    });
+	var tiger = false;
+	var gridPanel = Ext.create('Ext.grid.Panel', {
+		id:"gridPanel",
+		store: billGetStoreDetail,
+		listeners:{
+			containerdblclick: function(grid, e, eOpts){ //单击事件
+				if(tiger)
+					grid.getStore().add({'rownumber':'', 'materielName':'','amount':'0','unitPrice':'0','amountOfmoney':'0'});
+			},
+		    specialkey :function(field,e){
+		      alert("提示 键盘回车事件测试成功");
+		    },
+		},
+		plugins: [
+			Ext.create('Ext.grid.plugin.CellEditing', {
+				clicksToEdit: 1
+			})
+		],
+//		forceFit: true, //列表宽度自适应 
+	    columns: [
+	        { header: '行号',  dataIndex: 'rownumber' ,xtype: 'rownumberer', width: 50},
+	        { header: '物料名称',tooltip:'Ctrl', dataIndex: 'materielName', editor: { xtype:'textfield', listeners: {
+	        	itemdblclick:function(dataview, record, item, index, e){
+			       alert("itemdblclick"); 
+			  	},
+			  	specialkey:function(field,e){
+			        if (e.getKey()==17 && tiger){//Ctrl
+			            
+			        }else if(e.getKey()==18 && tiger){//Alt
+			        	openMaterielWindow();
+		        		Ext.Ajax.request({
+						    url: 'http://127.0.0.1:85/materiel/list',
+						    params: {},
+						    success: function(response){
+						        var data = response.responseText;
+						        var jsonObj = JSON.parse(data);
+//						        MaterielWindow.items.items[0].store.loadData(jsonObj)
+						        materielPanel.store.loadData(jsonObj);
+					        }
+					    });
+				    }
+			    },
+	        }},
+		},// flex: 1
+	        { header: '数量', dataIndex: 'amount', editor: { xtype:'textfield'}},
+	        { header: '单价', dataIndex: 'unitPrice'},
+	        { header: '金额', dataIndex: 'amountOfmoney' , renderer: function(v,p,r){
+				//r是对应的这行记录
+				var amountOfmoney = r.data.unitPrice*r.data.amount;
+				r.data.amountOfmoney = amountOfmoney;//这里已定需要
+				return amountOfmoney;
+			}},
+	    ],
+	    width: '100%',
+	    height: 320,
+		autoShow: true
+	});
+	
+	
+	var formfotter = Ext.create('Ext.form.Panel', {
+		bodyPadding: '5',
+		layout: {
+		    type: 'column',
+		    align: 'left'
+		},
+		baseCls: 'x-plain',
+		defaultType: 'textfield',
+		defaults: formDefaults,
+		items: [
+			{
+				id: 'purchasPerson',
+				name: 'purchasPerson',
+				fieldLabel: '采购人员',
+			},{
+				id: 'subDept',
+				name: 'subDept',
+				fieldLabel: '采购部门',
+			}
+		]
+	});
+</script>
